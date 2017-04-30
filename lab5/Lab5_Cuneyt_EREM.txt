@@ -1,0 +1,214 @@
+.text
+    .globl begin
+begin:
+        la $a0,start       		
+        li $v0,4        		
+        syscall
+        
+        li $v0, 30         		# time
+        syscall               		
+        move $t9, $a0 	
+        
+        la $t0,size			# s0 = N
+        lw $s0,0($t0)
+        
+alocateHeap:
+	mul $s4, $s0,$s0		# N * N
+        sll $a0, $s4, 2                	# 4 * N * N
+
+        li $v0, 9         		
+        syscall               		
+        move $s1, $v0 			# s1 = A
+        
+        li $v0, 9         		
+        syscall               		
+        move $s2, $v0 			# s2 = B
+        
+        li $v0, 9         		
+        syscall               		
+        move $s3, $v0 			# s3 = C
+        
+        
+	la   $a0, fileName1		# board file name
+	jal ReadFile
+        
+       	move $t0,$0			# int i = 0
+       	move $t1,$s2 			# base adress of B
+        la $t2,buffer			# $t2 
+FillMatrixB:     
+        lb $t3,0($t2)			 
+        addi $t2,$t2,2
+    	subi $t3,$t3,48        		# ascii to integer conversion	
+        sw $t3, 0($t1)
+        addi $t0, $t0, 1		# i++
+        addi $t1, $t1, 4
+        bne $t0, $s4, FillMatrixB
+        
+        la   $a0, fileName2		# board file name
+	jal ReadFile
+        
+        move $t0,$s4			# int i = N*N
+       	move $t1,$s3 			# base adress
+        la $t2,buffer			# $t2 
+FillMatrixC:      	
+        lb $t3,0($t2)			 
+        addi $t2,$t2,2
+    	subi $t3,$t3,48        		# ascii to integer conversion	
+        sw $t3, 0($t1)
+        subi $t0, $t0, 1		#i--
+        addi $t1, $t1, 4
+        bne $t0, $0, FillMatrixC
+        
+        li $v0, 30         		# time
+        syscall               		
+        move $t8, $a0 	
+        
+        sub $t0,$t8,$t9	
+        		
+        la $a0,fill       		
+        li $v0,4        		
+        syscall
+               
+        move $a0, $t0			
+        li $v0, 1        		# prints time
+        syscall
+        
+        la $a0,passLine        		
+        li $v0,4        		
+        syscall
+        
+        #j TersToplamaTop		#jump for row-column major
+
+        move $t0,$0			 
+        move $t1,$s1			
+        move $t2,$s2 			
+        move $t3,$s3 	
+sumTop:
+        lw $t4, 0($t2)			
+        lw $t5, 0($t3)			
+        add $t4,$t4,$t5
+        sw $t4, 0($t1)
+        
+         lw $t4, 4($t2)			
+        lw $t5, 4($t3)			
+        add $t4,$t4,$t5
+        sw $t4, 4($t1)
+        
+        addi $t0, $t0, 2
+        addi $t1, $t1, 8	
+        addi $t2, $t2, 8	
+        addi $t3, $t3, 8	
+        bne $t0, $s4, sumTop     
+ 	j FinalTime
+
+
+
+TersToplamaTop:
+       	addi $t1,$0,0			# column j
+TersToplama1:
+       	addi $t0,$0,0			# row i
+TersToplama2:
+	mul $t2, $t0,$s0		
+       	add $t2,$t2,$t1
+        sll $t2, $t2, 2                	# (i*Size+j)*4
+        
+       	add $t3,$s2,$t2
+       	lw $t4, 0($t3)			# load B
+       	
+       	add $t3,$s3,$t2
+       	lw $t3, 0($t3)			# load C
+       	
+       		
+       	add $t3,$t3,$t4
+       	add $t5,$s1,$t2		
+        sw $t3, 0($t5)			# store A
+        
+        addi $t0, $t0, 1		#i++
+        bne $t0, $s0, TersToplama2
+        
+        addi $t1, $t1, 1		#j++
+        bne $t1, $s0, TersToplama1
+        
+        
+        
+        
+FinalTime:       
+	li $v0, 30         		# time
+        syscall               		
+        move $t7, $a0 	
+        sub $t0,$t7,$t8	
+        		
+        la $a0,endMessage       		
+        li $v0,4        		
+        syscall     
+                  
+        move $a0, $t0			
+        li $v0, 1        		# prints time
+        syscall
+        
+        la $a0,passLine        		
+        li $v0,4        		
+        syscall    
+        #skip the display result   
+        j end				#jump for word 400 matrix
+        
+       	move $t0,$0 
+        move $t2,$s1
+DisplayResult:
+       	move $t1,$0 
+RowDisplay:  
+	lw $a0, 0($t2)			
+        li $v0, 1        		
+        syscall
+        
+        la $a0,tabCH       		
+        li $v0,4        		
+        syscall
+        
+        addi $t0, $t0, 1
+        addi $t1, $t1, 1
+        addi $t2, $t2, 4
+        bne $t1, $s0, RowDisplay	#end of the row
+        	
+        la $a0,passLine        		
+        li $v0,4        		
+        syscall
+        bne $t0, $s4, DisplayResult
+        
+end:
+        li $v0,10        	# system call to exit
+        syscall                	# bye bye
+
+ReadFile:
+li   $v0, 13       # system call for open file
+li   $a1, 0        # Open for reading
+li   $a2, 0
+syscall            # open a file (file descriptor returned in $v0)
+move $s6, $v0      # save the file descriptor 
+
+#read from file
+li   $v0, 14       # system call for read from file
+move $a0, $s6      # file descriptor 
+la   $a1, buffer   # address of buffer to which to read
+li   $a2, 100000   # hardcoded buffer length
+syscall            # read from file
+
+# Close the file 
+li   $v0, 16       # system call for close file
+move $a0, $s6      # file descriptor to close
+syscall            # close file
+jr $ra
+        
+.data
+size:	.word 400
+start: .asciiz "Program is started\n"
+fill: .asciiz "Matrix is filled : "
+endMessage: .asciiz "Program is ended : "
+tabCH: .asciiz "\t"
+passLine: .asciiz "\n"
+buffer:.space	100000	
+fileName1:.asciiz	"matrix1.dat"
+fileName2:.asciiz	"matrix2.dat"	
+
+
+

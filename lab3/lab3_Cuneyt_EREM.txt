@@ -1,0 +1,359 @@
+
+Cuneyt EREM
+
+
+module imem (	input [5:0] addr,
+    		output reg [31:0] instr);
+
+	always@(addr)
+	   case ({addr,2'b00})
+//		address		instruction
+//		-------		-----------
+		
+		8'h00: instr = 32'h20020005;		//addi $2,$0,5  
+		8'h04: instr = 32'h2003000c;  	//addi $3,$0,12    
+		8'h08: instr = 32'h2067fff7;  	//addi $7,$3,-9
+		8'h0c: instr = 32'h00e22025;		//or $4,$7,$2   
+		8'h10: instr = 32'h00642824;		//and $5,$3,$4  
+		8'h14: instr = 32'h00a42820;		//add $5,$5,$4 
+		8'h18: instr = 32'h10a7000a;		//beq $5,$7, 0x10    
+		8'h1c: instr = 32'h0064202a;		//slt $4,$3,$4  
+		8'h20: instr = 32'h10800001;		//beq $5, $0, 0x28
+		8'h24: instr = 32'h20050000;		//addi $5,$0,0 
+		8'h28: instr = 32'h00e2202a;		//slt $4,$7,$2 
+		8'h2c: instr = 32'h00853820;		//add $7,$4,$5 
+		8'h30: instr = 32'h00e23822;		//sub $7,$7,$2  
+		8'h34: instr = 32'hac670044;		//sw $7,68($3)   
+		8'h38: instr = 32'h8c020050;		//lw $2,80($0) 
+		8'h3c: instr = 32'h08000011;		//j 0x44    
+		8'h40: instr = 32'h20020001;		//addi $2,$0,1 
+		8'h44: instr = 32'hac020054;		//sw $2,84($0)   
+		//end of base instructions
+		
+		8'h48: instr = 32'h2008000a;		//addi t0, $0, 10
+		8'h4c: instr = 32'h20090005;		//addi t1, $0, 5
+		8'h50: instr = 32'h201d003c;		//addi sp, zero, 60
+		8'h54: instr = 32'hb3a90000;		//push t1
+		8'h58: instr = 32'h19280001;		//bge  t1, t0, 1 //it shouldn't jbranch
+		8'h5c: instr = 32'h19090002;		//bge  t0, t1, 2
+		8'h60: instr = 32'h04000000;		//nop		
+		8'h64: instr = 32'h04000000;		//nop
+		8'h68: instr = 32'h200a007c;		//addi t2, $0, h7c
+		8'h6c: instr = 32'h200b0000;		//addi t3, $0, 0
+
+		//8'h70: instr = 32'h01605010;		//jalr t2, t3
+		//8'h74: instr = 32'h04000000;		//nop
+		8'h78: instr = 32'h04000000;		//nop
+		8'h7c: instr = 32'h04000000;		//nop
+		8'h80: instr = 32'h20020002;		//addi v0, $0, 2
+		8'h84: instr = 32'hac0c0000;		//sw t6, 0($0)
+		8'h88: instr = 32'h3c400004;		//swap v0, 4($0)
+		8'h8c: instr = 32'h20020000;		//addi v0, $0, 0
+		 
+		 
+		
+		
+		
+		
+	      default: instr = {32{1'bx}};	// unknown instruction
+	    endcase
+
+endmodule
+
+
+
+
+//--------------------------------------------------------------
+// mips.v
+//
+// Written by: David Harris and Sarah Harris 23 October 2005
+//
+// Modified by: Will Sawyer 10 March 2014
+//
+// Single-cycle MIPS processor
+//--------------------------------------------------------------
+
+
+// single-cycle MIPS processor
+
+module mips (input         clk, reset,
+             output [31:0] pc,
+             input  [31:0] instr,
+             output        memwrite,
+             output [31:0] aluout, writedata,
+             input  [31:0] readdata);
+
+  wire        pcsrc, zero,alusrc, regdst, regwrite;
+  wire [1:0]  memtoreg, jump;
+  wire [2:0]  alucontrol;
+
+  controller c (instr[31:26], instr[5:0], zero,
+               memwrite, pcsrc,
+               alusrc, regdst, regwrite, jump, memtoreg,
+               alucontrol);
+  datapath dp (clk, reset, pcsrc,
+              alusrc, regdst, regwrite, memtoreg, jump,
+              alucontrol, zero, pc, instr,
+              aluout, writedata, readdata);
+endmodule
+
+
+module controller(input  [5:0] op, funct,
+                  input        zero,
+                  output       memwrite,
+                  output       pcsrc, alusrc,
+                  output       regdst, regwrite,
+                  output[1:0]  jump, memtoreg, 
+                  output [2:0] alucontrol);
+
+  wire [1:0] aluop;
+  wire       branch;
+
+  maindec md (op, regwrite, regdst, alusrc, branch,
+             memwrite, memtoreg, aluop, jump);
+  aludec  ad (funct, aluop, alucontrol);
+
+  assign pcsrc = branch & zero;
+endmodule
+
+module maindec(input  [5:0] op,
+               output       regwrite, regdst,
+               output       alusrc, branch, 
+               output       memwrite, 
+               output [1:0] memtoreg ,aluop, jump 
+					);
+
+  reg [10:0] controls;
+
+  assign {regwrite, regdst, alusrc, branch, 
+          memwrite, memtoreg, aluop, jump} = controls;
+
+  always @(*)
+    case(op)
+	 
+      6'b000000: controls <= 11'b11000001000; //R-type
+		6'b000001: controls <= 11'b00000000000; //nop
+      6'b100011: controls <= 11'b10100100000; //LW
+      6'b101011: controls <= 11'b00101000000; //SW
+      6'b000100: controls <= 11'b00010000100; //BEQ
+      6'b001000: controls <= 11'b10100000000; //ADDI
+      6'b000010: controls <= 11'b00000000001; //J
+		6'b010000: controls <= 11'b11000100010; //jalr
+		6'b000110: controls <= 11'b00010001100; //bge 
+		6'b101100: controls <= 11'b11101110000; //push
+		6'b101111: controls <= 11'b10101010000; //swaprm
+		
+      default:   controls <= 11'bxxxxxxxxxxx; //???
+    endcase
+endmodule
+
+module aludec(input      [5:0] funct,
+              input      [1:0] aluop,
+              output reg [2:0] alucontrol);
+
+  always @(*)
+    case(aluop)
+      2'b00: alucontrol <= 3'b010;  // add 
+      2'b01: alucontrol <= 3'b110;  // sub
+		2'b11: alucontrol <= 3'b111;  // bge
+      default: case(funct)          // RTYPE
+          6'b100000: alucontrol <= 3'b010; // ADD
+          6'b100010: alucontrol <= 3'b110; // SUB
+          6'b100100: alucontrol <= 3'b000; // AND
+          6'b100101: alucontrol <= 3'b001; // OR
+          6'b101010: alucontrol <= 3'b111; // SLT
+	6'b101100: alucontrol <= 3'b101; // SLTE
+          default:   alucontrol <= 3'bxxx; // ???
+        endcase
+    endcase
+endmodule
+
+module datapath(input         clk, reset,
+                input          pcsrc,
+                input         alusrc, regdst,
+                input         regwrite,
+					 input  [1:0]  memtoreg, jump,
+                input  [2:0]  alucontrol,
+                output        zero,
+                output [31:0] pc,
+                input  [31:0] instr,
+                output [31:0] aluout, writedata,
+                input  [31:0] readdata);
+
+  wire [4:0]  writereg;
+  wire [31:0] pcnext, pcnextbr, pcplus4, pcbranch,readminus4;
+  wire [31:0] signimm, signimmsh;
+  wire [31:0] srca, srcb;
+  wire [31:0] result;
+
+  // next PC logic
+  flopr #(32) pcreg(clk, reset, pcnext, pc);
+  adder       pcadd1(pc, 32'b100, pcplus4);
+  sl2         immsh(signimm, signimmsh);
+  adder       pcadd2(pcplus4, signimmsh, pcbranch);
+  adder 		  rmin4( 32'hFFFFFFFC, aluout, readminus4);  //for push
+  mux2 #(32)  branchmux(pcplus4, pcbranch, pcsrc,
+                      pcnextbr);
+   mux3 #(32)  jumpmux(pcnextbr, {pcplus4[31:28], instr[25:0], 2'b00}, srca, jump, pcnext);
+
+  // register file logic
+  regfile     rf(clk, regwrite, instr[25:21],
+                 instr[20:16], writereg,
+                 result, srca, writedata);
+  mux2 #(5)   w_addrmux(instr[20:16], instr[15:11],
+                    regdst, writereg);
+						  
+  mux4 #(32)  w_datamux(aluout, readdata, pcplus4, readminus4, memtoreg, result);
+
+  signext     se(instr[15:0], signimm);
+
+  // ALU logic
+  mux2 #(32)  srcbmux(writedata, signimm, alusrc,
+                      srcb);
+  alu         alu(srca, srcb, alucontrol,
+                  aluout, zero);
+endmodule
+
+
+//------------------------------------------------
+// mipsparts.v
+// David_Harris@hmc.edu 23 October 2005
+// Components used in MIPS processor
+//------------------------------------------------
+
+module alu(input      [31:0] a, b, 
+           input      [2:0]  alucont, 
+           output reg [31:0] result,
+           output            zero);
+			  
+		always@(*)
+			case(alucont)
+				3'b010: result = a + b; // ADD
+				3'b110: result = a - b; // SUB
+				3'b000: result = a & b; // AND
+				3'b001: result = a | b; // OR
+				3'b101: result = a <= b; // SLTE
+				3'b111: result = a < b; // SLT
+          default:  result = 32'hxxxxxxxx; // ???
+			endcase
+		
+		assign zero = (result == 32'h00000000);
+endmodule
+
+module regfile(input         clk, 
+               input         we3, 
+               input  [4:0]  ra1, ra2, wa3, 
+               input  [31:0] wd3, 
+               output [31:0] rd1, rd2);
+
+  reg [31:0] rf[31:0];
+
+  // three-ported register file
+  // read two ports combinationally
+  // write third port on rising edge of clock
+  // register 0 hardwired to 0
+
+  always @(posedge clk)
+    if (we3) rf[wa3] <= wd3;	
+
+  assign rd1 = (ra1 != 0) ? rf[ra1] : 0;
+  assign rd2 = (ra2 != 0) ? rf[ra2] : 0;
+endmodule
+
+module adder(input [31:0] a, b,
+             output [31:0] y);
+
+  assign y = a + b;
+endmodule
+
+module sl2(input  [31:0] a,
+           output [31:0] y);
+
+  // shift left by 2
+  assign y = {a[29:0], 2'b00};
+endmodule
+
+module signext(input  [15:0] a,
+               output [31:0] y);
+              
+  assign y = {{16{a[15]}}, a};
+endmodule
+
+module flopr #(parameter WIDTH = 8)
+              (input                  clk, reset,
+               input      [WIDTH-1:0] d, 
+               output reg [WIDTH-1:0] q);
+
+  always @(posedge clk, posedge reset)
+    if (reset) q <= 0;
+    else       q <= d;
+endmodule
+
+module flopenr #(parameter WIDTH = 8)
+                (input                  clk, reset,
+                 input                  en,
+                 input      [WIDTH-1:0] d, 
+                 output reg [WIDTH-1:0] q);
+ 
+  always @(posedge clk, posedge reset)
+    if      (reset) q <= 0;
+    else if (en)    q <= d;
+endmodule
+
+module mux2 #(parameter WIDTH = 8)
+             (input  [WIDTH-1:0] d0, d1, 
+              input              s, 
+              output [WIDTH-1:0] y);
+
+  assign y = s ? d1 : d0; 
+endmodule
+
+module mux3 #(parameter WIDTH = 8)
+             (input  [WIDTH-1:0] d0, d1, d2,
+              input [1:0] s, 
+              output [WIDTH-1:0] y);
+
+  assign y = s[1] ? d2: (s[0] ? d1 : d0); 
+endmodule
+
+module mux4 #(parameter WIDTH = 8)
+             (input  [WIDTH-1:0] d0, d1, d2, d3,
+              input [1:0] s, 
+              output [WIDTH-1:0] y);
+
+  assign y = s[1] ? (s[0] ? d3 : d2): (s[0] ? d1 : d0); 
+endmodule
+
+
+NET "AN(3)"  LOC = "F12"; 
+NET "AN(2)"  LOC = "J12";
+NET "AN(1)"  LOC = "M13";
+NET "AN(0)"  LOC = "K14";  
+NET "C(6)"   LOC = "L14";
+NET "C(5)"   LOC = "H12"; 
+NET "C(4)"   LOC = "N14";  
+NET "C(3)"   LOC = "N11";  
+NET "C(2)"   LOC = "P12"; 
+NET "C(1)"   LOC = "L13";  
+NET "C(0)"   LOC = "M12";  
+NET "DP"     LOC = "N13";
+net "clk"    LOC = "B8";
+NET "btn" 	 LOC = "A7";
+NET "reset"  LOC = "M4";
+
+NET "memwrite" LOC = "G1";  
+
+NET "pcout(6)" LOC = "P4";
+NET "pcout(5)" LOC = "N4";
+NET "pcout(4)" LOC = "N5";
+NET "pcout(3)" LOC = "P6";
+NET "pcout(2)" LOC = "P7";
+NET "pcout(1)" LOC = "M11";
+NET "pcout(0)" LOC = "M5";
+
+
+
+
+
+
+
